@@ -74,7 +74,7 @@ bool UniqueBTreeNode::add(const void *key) {
 			t = searchInterval(this->keys, this->tree->keySize, this->numKeys, key);
 			if(t == -1)
 				return false;
-			std::auto_ptr<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
+			std::unique_ptr<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
 
 			try {
 				return n->add(key);
@@ -110,7 +110,7 @@ bool UniqueBTreeNode::isNotExists(const void *key) {
 		if(t == -1)
 			return false;
 
-		std::auto_ptr<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
+		std::unique_ptr<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
 
 		return n->isNotExists(key);
 	}
