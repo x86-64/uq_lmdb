@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
 	OPTS.keyField   = 0;
 	OPTS.keyFieldSeparator = '\t';
 
-	while ((ch = getopt(argc, argv, "crvub:k:t:f:d:m:p:q")) != -1) {
+	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:q")) != -1) {
 		switch (ch) {
 			case 'b':
 				blockSize = strtoul(optarg, NULL, 0);
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
 			case 'u':
 				OPTS.urlMode = 1;
 			break;
-			case 'v':
+			case 'V':
 				OPTS.verbose = 1;
 			break;
 			case 'f':
