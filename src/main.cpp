@@ -25,6 +25,7 @@ struct options {
 	char forceCreateNewDb;
 	char urlMode;
 	char verbose;
+	char invert;
 	size_t cacheSize;
 	size_t prefetchSize;
 	unsigned char keySize;
@@ -71,6 +72,7 @@ int main(int argc, char *argv[]) {
 	OPTS.blockSize = 1024*8;
 	OPTS.forceCreateNewDb = 0;
 	OPTS.verbose = 0;
+	OPTS.invert = 0;
 	OPTS.urlMode = 0;
 	OPTS.keySize = 8;
 	OPTS.checkMode = 0;
@@ -81,7 +83,7 @@ int main(int argc, char *argv[]) {
 	OPTS.keyField   = 0;
 	OPTS.keyFieldSeparator = '\t';
 
-	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:q")) != -1) {
+	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:qv")) != -1) {
 		switch (ch) {
 			case 'b':
 				blockSize = strtoul(optarg, NULL, 0);
@@ -114,6 +116,9 @@ int main(int argc, char *argv[]) {
 			break;
 			case 'V':
 				OPTS.verbose = 1;
+			break;
+			case 'v':
+				OPTS.invert = 1;
 			break;
 			case 'f':
 				keyField = strtoul(optarg, NULL, 0);
@@ -256,6 +261,11 @@ void mainLoop(UniqueBTree &tree) {
 		}
 		
 		int seen = (tree.*searchAction)(getHash(keyPtr, keyLen)) ? 0 : 1;
+		
+		if(OPTS.invert == 1){
+			seen = seen ? 0 : 1;
+		}
+		
 		if(OPTS.queryMode == 1){
 			fprintf(stdout, "%zd %d\n", lineN, seen);
 		}else{
@@ -323,7 +333,8 @@ void usage() {
 	fputs("  -t <path>: path to storage\n", stderr);
 	fputs("  -c: force creation of storage\n", stderr);
 	fputs("  -u: url mode\n", stderr);
-	fputs("  -v: verbose\n", stderr);
+	fputs("  -V: verbose\n", stderr);
+	fputs("  -v: invert match\n", stderr);
 	fputs("  -r: read-only mode\n", stderr);
 	fputs("  -q: query mode: writes '<lineN> <0/1>' for every input line\n", stderr);
 	fputs("  -f <number>: select key field\n", stderr);
