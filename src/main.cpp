@@ -30,6 +30,7 @@ struct options {
 	unsigned char keySize;
 
 	char checkMode;
+	char queryMode;
 
 	// fields control
 	int keyField;
@@ -73,13 +74,14 @@ int main(int argc, char *argv[]) {
 	OPTS.urlMode = 0;
 	OPTS.keySize = 8;
 	OPTS.checkMode = 0;
+	OPTS.queryMode = 0;
 	OPTS.cacheSize = SIZE_T_MAX;
 
 	// fields control
 	OPTS.keyField   = 0;
 	OPTS.keyFieldSeparator = '\t';
 
-	while ((ch = getopt(argc, argv, "crvub:k:t:f:d:m:p:")) != -1) {
+	while ((ch = getopt(argc, argv, "crvub:k:t:f:d:m:p:q")) != -1) {
 		switch (ch) {
 			case 'b':
 				blockSize = strtoul(optarg, NULL, 0);
@@ -103,6 +105,9 @@ int main(int argc, char *argv[]) {
 			break;
 			case 'r':
 				OPTS.checkMode = 1;
+			break;
+			case 'q':
+				OPTS.queryMode = 1;
 			break;
 			case 'u':
 				OPTS.urlMode = 1;
@@ -209,12 +214,14 @@ void mainLoop(UniqueBTree &tree) {
 		searchAction = &UniqueBTree::add;
 
 	char *linePtr = NULL;
+	size_t  lineN = 0;
 	ssize_t lineLen;
 
 	while((lineLen = reader.readUpToDelimiter('\n', (void **)&linePtr))) {
 		if(lineLen < 0)
 			fatal("Unable to read line from stdin");
 
+		lineN++;
 		char *lineEnd = (linePtr + lineLen);
 
 		if(OPTS.keyField == -1) {
@@ -247,10 +254,15 @@ void mainLoop(UniqueBTree &tree) {
 
 			}
 		}
-
-		if((tree.*searchAction)(getHash(keyPtr, keyLen))){
-			int ret = fwrite(linePtr, lineLen, 1, stdout);
-			(void)ret;
+		
+		int seen = (tree.*searchAction)(getHash(keyPtr, keyLen)) ? 0 : 1;
+		if(OPTS.queryMode == 1){
+			fprintf(stdout, "%zd %d\n", lineN, seen);
+		}else{
+			if(seen){
+				int ret = fwrite(linePtr, lineLen, 1, stdout);
+				(void)ret;
+			}
 		}
 	}
 
@@ -313,6 +325,7 @@ void usage() {
 	fputs("  -u: url mode\n", stderr);
 	fputs("  -v: verbose\n", stderr);
 	fputs("  -r: read-only mode\n", stderr);
+	fputs("  -q: query mode: writes '<lineN> <0/1>' for every input line\n", stderr);
 	fputs("  -f <number>: select key field\n", stderr);
 	fputs("  -d <char>: use given delimiter instead of TAB for field delimiter\n", stderr);
 	fputs("  -b <number>: block size\n", stderr);
