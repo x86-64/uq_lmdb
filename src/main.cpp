@@ -267,7 +267,7 @@ void mainLoop(UniqueBTree &tree) {
 		}
 		
 		if(OPTS.queryMode == 1){
-			fprintf(stdout, "%zd %d\n", lineN, seen);
+			fprintf(stdout, "%zu %u\n", lineN, seen);
 		}else{
 			if(seen){
 				int ret = fwrite(linePtr, lineLen, 1, stdout);
