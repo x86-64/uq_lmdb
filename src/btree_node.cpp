@@ -8,6 +8,12 @@
 #include "misc.hpp"
 #include "btree_node.hpp"
 
+#if __cplusplus >= 201103L
+	#define PTR_CLASS unique_ptr
+#else
+	#define PTR_CLASS auto_ptr
+#endif
+
 UniqueBTreeNode::UniqueBTreeNode(UniqueBTree *tree, Block *bl)
 	:block(bl),
 	tree(tree),
@@ -74,7 +80,7 @@ bool UniqueBTreeNode::add(const void *key) {
 			t = searchInterval(this->keys, this->tree->keySize, this->numKeys, key);
 			if(t == -1)
 				return false;
-			std::unique_ptr<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
+			std::PTR_CLASS<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
 
 			try {
 				return n->add(key);
@@ -110,7 +116,7 @@ bool UniqueBTreeNode::isNotExists(const void *key) {
 		if(t == -1)
 			return false;
 
-		std::unique_ptr<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
+		std::PTR_CLASS<UniqueBTreeNode> n(this->tree->get(this->childs[t]));
 
 		return n->isNotExists(key);
 	}
