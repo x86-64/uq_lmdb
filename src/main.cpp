@@ -248,8 +248,10 @@ void mainLoop(UniqueBTree &tree) {
 			}
 		}
 
-		if((tree.*searchAction)(getHash(keyPtr, keyLen)))
-			fwrite(linePtr, lineLen, 1, stdout);
+		if((tree.*searchAction)(getHash(keyPtr, keyLen))){
+			int ret = fwrite(linePtr, lineLen, 1, stdout);
+			(void)ret;
+		}
 	}
 
 	OPTS.reader = NULL;
