@@ -312,6 +312,7 @@ void usage() {
 	fputs("  -c: force creation of storage\n", stderr);
 	fputs("  -u: url mode\n", stderr);
 	fputs("  -v: verbose\n", stderr);
+	fputs("  -r: read-only mode\n", stderr);
 	fputs("  -f <number>: select key field\n", stderr);
 	fputs("  -d <char>: use given delimiter instead of TAB for field delimiter\n", stderr);
 	fputs("  -b <number>: block size\n", stderr);
