@@ -1,11 +1,14 @@
 . tests/func.inc.sh
 
 tmpStoragePath="$TMP_DIR"/test.storage.btree
+tmpOutputPath="$TMP_DIR"/test.output
 
-$CMD -ct "$tmpStoragePath" < $TEST_ROOT/storage.data > /dev/null
+rm -rf $tmpStoragePath >/dev/null 2>&1 || true
 
-md5=$(MD5 "$tmpStoragePath")
-if [ "$md5" != '0f07ab5edb8196a5e02ff91c71449419' ]; then
+$CMD -ct "$tmpStoragePath" < $TEST_ROOT/storage.data > $tmpOutputPath
+
+md5=$(MD5 "$tmpOutputPath")
+if [ "$md5" != 'fdc2ffc3edbab0ec2fc1a7678a33cb21' ]; then
 	echo "Invalid checksum $md5"
 	exit 1
 fi
