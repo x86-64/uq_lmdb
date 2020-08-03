@@ -42,6 +42,7 @@ struct options {
 	unsigned char keySize;
 
 	char checkMode;
+	char format_seen;
 
 	// fields control
 	int keyField;
@@ -89,13 +90,14 @@ int main(int argc, char *argv[]) {
 	OPTS.urlMode = 0;
 	OPTS.keySize = 8;
 	OPTS.checkMode = 0;
+	OPTS.format_seen = 0;
 	OPTS.cacheSize = SIZE_T_MAX;
 
 	// fields control
 	OPTS.keyField   = 0;
 	OPTS.keyFieldSeparator = '\t';
 
-	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:v")) != -1) {
+	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:vs")) != -1) {
 		switch (ch) {
 			case 'b':
 				blockSize = strtoul(optarg, NULL, 0);
@@ -122,6 +124,9 @@ int main(int argc, char *argv[]) {
 			break;
 			case 'u':
 				OPTS.urlMode = 1;
+			break;
+			case 's':
+				OPTS.format_seen = 1;
 			break;
 			case 'V':
 				OPTS.verbose = 1;
@@ -339,9 +344,13 @@ void mainLoop(MDB_env *env) {
 			seen = seen ? 0 : 1;
 		}
 		
-		if(!seen){
-			int ret = fwrite(linePtr, lineLen, 1, stdout);
-			(void)ret;
+		if(OPTS.format_seen){
+			fprintf(stdout, "%zu %u\n", lineN, seen);
+		}else{
+			if(!seen){
+				int ret = fwrite(linePtr, lineLen, 1, stdout);
+				(void)ret;
+			}
 		}
 		
 		batch++;
