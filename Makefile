@@ -4,7 +4,7 @@ CFLAGS?=-c -O2 -Wall -Werror -I/usr/local/include -g
 
 LDFLAGS?=-L/usr/local/lib
 
-LIBS=-lssl -lcrypto
+LIBS=-lssl -lcrypto -llmdb
 
 PROJECT=uq
 

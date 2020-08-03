@@ -19,6 +19,17 @@
 #include "misc.hpp"
 #include "storage.hpp"
 #include "token_reader.hpp"
+ 
+#include <sys/stat.h>
+#include <ctype.h>
+#include "lmdb.h"
+#ifdef _WIN32
+#define Z	"I"
+#else
+#define Z	"z"
+#endif
+static char *prog;
+
 
 struct options {
 	size_t blockSize;
@@ -31,7 +42,6 @@ struct options {
 	unsigned char keySize;
 
 	char checkMode;
-	char queryMode;
 
 	// fields control
 	int keyField;
@@ -55,7 +65,7 @@ int getStdinLine(char *buf, int buf_size, char **line_start, int *line_len);
 void onSignal(int sig);
 void onAlarm(int sig);
 size_t parseSize(const char *str);
-void mainLoop(UniqueBTree &tree);
+void mainLoop(MDB_env *env);
 
 int main(int argc, char *argv[]) {
 	const char *filename = "";
@@ -66,6 +76,9 @@ int main(int argc, char *argv[]) {
 	unsigned long prefetchSize;
 
 	char ch;
+	
+	prog = argv[0];
+	struct stat st = {0};
 
 	STAT.lineNumber = 0;
 
@@ -76,14 +89,13 @@ int main(int argc, char *argv[]) {
 	OPTS.urlMode = 0;
 	OPTS.keySize = 8;
 	OPTS.checkMode = 0;
-	OPTS.queryMode = 0;
 	OPTS.cacheSize = SIZE_T_MAX;
 
 	// fields control
 	OPTS.keyField   = 0;
 	OPTS.keyFieldSeparator = '\t';
 
-	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:qv")) != -1) {
+	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:v")) != -1) {
 		switch (ch) {
 			case 'b':
 				blockSize = strtoul(optarg, NULL, 0);
@@ -107,9 +119,6 @@ int main(int argc, char *argv[]) {
 			break;
 			case 'r':
 				OPTS.checkMode = 1;
-			break;
-			case 'q':
-				OPTS.queryMode = 1;
 			break;
 			case 'u':
 				OPTS.urlMode = 1;
@@ -162,20 +171,8 @@ int main(int argc, char *argv[]) {
 		exit(255);
 	}
 
-	UniqueBTree tree(filename, (bool)OPTS.checkMode);
-	tree.setKeySize(OPTS.keySize);
-	tree.storage.setPrefetchSize(OPTS.prefetchSize);
-
-	if(access(filename, R_OK | W_OK) == 0 && !OPTS.forceCreateNewDb) {
-		tree.load();
-
-		if(OPTS.verbose)
-			fprintf(stderr, "Btree from %s with blockSize=%u was loaded\n", filename, (unsigned int)tree.blockSize);
-	} else {
-		tree.create(OPTS.blockSize);
-
-		if(OPTS.verbose)
-			fprintf(stderr, "New btree in %s with blockSize=%u was created\n", filename, (unsigned int)tree.blockSize);
+	if(stat(filename, &st) == -1) {
+		mkdir(filename, 0700);
 	}
 
 	if(OPTS.verbose)
@@ -183,22 +180,54 @@ int main(int argc, char *argv[]) {
 
 	setlinebuf(stdout);
 
-	if(OPTS.cacheSize < tree.blockSize) {
-		fprintf(stderr, "Cache size must be >=blockSize [%u]\n", (unsigned int)tree.blockSize);
-		exit(255);
+	MDB_env *env;
+	MDB_val kbuf, dbuf;
+	int rc;
+	int envflags = 0;
+	
+	dbuf.mv_size = 4096;
+	dbuf.mv_data = malloc(dbuf.mv_size);
+
+	rc = mdb_env_create(&env);
+	if (rc) {
+		fprintf(stderr, "mdb_env_create failed, error %d %s\n", rc, mdb_strerror(rc));
+		return EXIT_FAILURE;
 	}
 
-	tree.storage.setCacheSize(OPTS.cacheSize / tree.blockSize);
+	mdb_env_set_maxdbs(env, 2);
 
-	mainLoop(tree);
+	rc = mdb_env_open(env, filename, envflags, 0664);
+	if (rc) {
+		fprintf(stderr, "mdb_env_open failed, error %d %s\n", rc, mdb_strerror(rc));
+		goto env_close;
+	}
+
+	kbuf.mv_size = mdb_env_get_maxkeysize(env) * 2 + 2;
+	kbuf.mv_data = malloc(kbuf.mv_size);
+
+	mainLoop(env);
+
+env_close:
+	mdb_env_close(env);
 
 	return EXIT_SUCCESS;
 }
 
-void mainLoop(UniqueBTree &tree) {
+void mainLoop(MDB_env *env) {
 	char *keyPtr;
 	ssize_t keyLen;
 	TokenReader reader(STDIN_FILENO);
+	
+	// lmdb
+	int rc;
+	MDB_txn *txn;
+	MDB_cursor *mc;
+	MDB_dbi dbi;
+	int putflags = 0;
+
+	char *linePtr = NULL;
+	size_t  lineN = 0;
+	ssize_t lineLen;
 
 	OPTS.reader = &reader;
 
@@ -209,18 +238,32 @@ void mainLoop(UniqueBTree &tree) {
 	signal(SIGTERM, onSignal);
 
 	signal(SIGALRM, onAlarm);
+	
+	if(OPTS.checkMode == 1){
+	}else{
+		putflags |= MDB_NOOVERWRITE; //|MDB_NODUPDATA;
+	}
 
-	/* функция, через которую проверяется каждый ключ. Может быть add или check */
-	bool (UniqueBTree::*searchAction)(const void *);
+	MDB_val key, value;
+	int batch = 0;
 
-	if(OPTS.checkMode)
-		searchAction = &UniqueBTree::check;
-	else
-		searchAction = &UniqueBTree::add;
+	rc = mdb_txn_begin(env, NULL, 0, &txn);
+	if (rc) {
+		fprintf(stderr, "mdb_txn_begin failed, error %d %s\n", rc, mdb_strerror(rc));
+		return;
+	}
 
-	char *linePtr = NULL;
-	size_t  lineN = 0;
-	ssize_t lineLen;
+	rc = mdb_open(txn, NULL, MDB_CREATE, &dbi);
+	if (rc) {
+		fprintf(stderr, "mdb_open failed, error %d %s\n", rc, mdb_strerror(rc));
+		goto txn_abort;
+	}
+
+	rc = mdb_cursor_open(txn, dbi, &mc);
+	if (rc) {
+		fprintf(stderr, "mdb_cursor_open failed, error %d %s\n", rc, mdb_strerror(rc));
+		goto txn_abort;
+	}
 
 	while((lineLen = reader.readUpToDelimiter('\n', (void **)&linePtr))) {
 		if(lineLen < 0)
@@ -260,23 +303,82 @@ void mainLoop(UniqueBTree &tree) {
 			}
 		}
 		
-		int seen = (tree.*searchAction)(getHash(keyPtr, keyLen)) ? 0 : 1;
+		key.mv_data = keyPtr;
+		key.mv_size = keyLen;
+		
+		int seen = 0;
+		
+		if(OPTS.checkMode == 1){
+			rc = mdb_cursor_get(mc, &key, &value, MDB_NEXT);
+			if(rc == MDB_NOTFOUND){
+				seen = 0;
+			}else if(rc){
+				fprintf(stderr, "%s: line %" Z "d: txn_commit: %s\n",
+					prog, lineN, mdb_strerror(rc));
+				return;
+			}else{
+				seen = (int)*((char *)value.mv_data);
+			}
+		}else{
+			char value_1 = 1;
+			value.mv_data = &value_1;
+			value.mv_size = sizeof(value_1);
+			
+			rc = mdb_cursor_put(mc, &key, &value, putflags);
+			if (rc == MDB_KEYEXIST && putflags){
+				seen = 1;
+			}else if (rc) {
+				fprintf(stderr, "mdb_cursor_put failed, error %d %s\n", rc, mdb_strerror(rc));
+				goto txn_abort;
+			}else{
+				seen = 0;
+			}
+		}
 		
 		if(OPTS.invert == 1){
 			seen = seen ? 0 : 1;
 		}
 		
-		if(OPTS.queryMode == 1){
-			fprintf(stdout, "%zu %u\n", lineN, seen);
-		}else{
-			if(!seen){
-				int ret = fwrite(linePtr, lineLen, 1, stdout);
-				(void)ret;
+		if(!seen){
+			int ret = fwrite(linePtr, lineLen, 1, stdout);
+			(void)ret;
+		}
+		
+		batch++;
+		if (batch == 100) {
+			rc = mdb_txn_commit(txn);
+			if (rc) {
+				fprintf(stderr, "%s: line %" Z "d: txn_commit: %s\n",
+					prog, lineN, mdb_strerror(rc));
+				return;
 			}
+			rc = mdb_txn_begin(env, NULL, 0, &txn);
+			if (rc) {
+				fprintf(stderr, "mdb_txn_begin failed, error %d %s\n", rc, mdb_strerror(rc));
+				return;
+			}
+			rc = mdb_cursor_open(txn, dbi, &mc);
+			if (rc) {
+				fprintf(stderr, "mdb_cursor_open failed, error %d %s\n", rc, mdb_strerror(rc));
+				goto txn_abort;
+			}
+			batch = 0;
 		}
 	}
 
 	OPTS.reader = NULL;
+	
+	rc = mdb_txn_commit(txn);
+	txn = NULL;
+	if (rc) {
+		fprintf(stderr, "%s: line %" Z "d: txn_commit: %s\n",
+			prog, lineN, mdb_strerror(rc));
+		return;
+	}
+	mdb_dbi_close(env, dbi);
+
+txn_abort:
+	mdb_txn_abort(txn);
 }
 
 void onSignal(int sig) {
