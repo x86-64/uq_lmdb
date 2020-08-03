@@ -28,3 +28,5 @@ clean:
 
 test: build
 	sh tests/run.sh
+benchmark: build
+	sh benchmarks/run.sh

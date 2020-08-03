@@ -20,7 +20,6 @@
 #include "storage.hpp"
 #include "token_reader.hpp"
  
-#include <sys/stat.h>
 #include <ctype.h>
 #include "lmdb.h"
 #ifdef _WIN32
@@ -43,6 +42,7 @@ struct options {
 
 	char checkMode;
 	char format_seen;
+	size_t map_size;
 
 	// fields control
 	int keyField;
@@ -79,7 +79,6 @@ int main(int argc, char *argv[]) {
 	char ch;
 	
 	prog = argv[0];
-	struct stat st = {0};
 
 	STAT.lineNumber = 0;
 
@@ -92,12 +91,13 @@ int main(int argc, char *argv[]) {
 	OPTS.checkMode = 0;
 	OPTS.format_seen = 0;
 	OPTS.cacheSize = SIZE_T_MAX;
+	OPTS.map_size = (size_t)10485760 * 100 * 16; // 16Gb
 
 	// fields control
 	OPTS.keyField   = 0;
 	OPTS.keyFieldSeparator = '\t';
 
-	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:vs")) != -1) {
+	while ((ch = getopt(argc, argv, "crVub:k:t:f:d:m:p:vsl:")) != -1) {
 		switch (ch) {
 			case 'b':
 				blockSize = strtoul(optarg, NULL, 0);
@@ -112,6 +112,9 @@ int main(int argc, char *argv[]) {
 					fatalInUserOptions("Key size must be in (1, 2, 4, 8, 16)\n");
 
 				OPTS.keySize = keySize;
+			break;
+			case 'l':
+				OPTS.map_size = strtoul(optarg, NULL, 0);
 			break;
 			case 't':
 				filename = optarg;
@@ -176,10 +179,6 @@ int main(int argc, char *argv[]) {
 		exit(255);
 	}
 
-	if(stat(filename, &st) == -1) {
-		mkdir(filename, 0700);
-	}
-
 	if(OPTS.verbose)
 		onAlarm(SIGALRM);
 
@@ -188,7 +187,7 @@ int main(int argc, char *argv[]) {
 	MDB_env *env;
 	MDB_val kbuf, dbuf;
 	int rc;
-	int envflags = 0;
+	int envflags = MDB_NOSUBDIR;
 	
 	dbuf.mv_size = 4096;
 	dbuf.mv_data = malloc(dbuf.mv_size);
@@ -200,6 +199,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	mdb_env_set_maxdbs(env, 2);
+	mdb_env_set_mapsize(env, OPTS.map_size);
 
 	rc = mdb_env_open(env, filename, envflags, 0664);
 	if (rc) {
@@ -447,13 +447,14 @@ void usage() {
 	fputs("  -V: verbose\n", stderr);
 	fputs("  -v: invert match\n", stderr);
 	fputs("  -r: read-only mode\n", stderr);
-	fputs("  -q: query mode: writes '<lineN> <0/1>' for every input line\n", stderr);
+	fputs("  -s: output writes '<lineN> <0/1>' for every input line\n", stderr);
 	fputs("  -f <number>: select key field\n", stderr);
 	fputs("  -d <char>: use given delimiter instead of TAB for field delimiter\n", stderr);
 	fputs("  -b <number>: block size\n", stderr);
 	fputs("  -f <size>: cache size\n", stderr);
 	fputs("  -p <size>: buffer prefetch size\n", stderr);
 	fputs("  -k <1|2|4|8|16>: key hash size\n", stderr);
+	fputs("  -l <size>: lmdb map size\n", stderr);
 }
 
 const unsigned char *getHash(const char *string, int stringLen) {
