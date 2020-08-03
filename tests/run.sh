@@ -9,7 +9,7 @@ fail=""
 
 export TEST_ROOT="$testDir"
 export TMP_DIR="/tmp"
-export CMD="./uq"
+export CMD="./uq_lmdb"
 
 echo "Running tests"
 

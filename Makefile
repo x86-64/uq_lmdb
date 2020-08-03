@@ -6,7 +6,7 @@ LDFLAGS?=-L/usr/local/lib
 
 LIBS=-lssl -lcrypto -llmdb
 
-PROJECT=uq
+PROJECT=uq_lmdb
 
 OBJS=btree.o btree_node.o main.o misc.o storage.o token_reader.o
 
